@@ -2,6 +2,8 @@ from ..common import *
 
 if sys.platform == 'win32':
     getch = ctypes.CFUNCTYPE(ctypes.c_int32)(('_getch', windll.msvcrt))
+else:
+    getch = input
 
 def pause(text = None):
     if text is not None:
