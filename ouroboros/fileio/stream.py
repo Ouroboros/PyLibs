@@ -308,6 +308,9 @@ class FileStream(object):
         return self.Read()
 
     def Write(self, buf):
+        if not buf:
+            return
+
         if isinstance(buf, FileStream):
             with FileStreamPositionHolder(buf) as fs:
                 fs.Position = 0
@@ -411,3 +414,6 @@ class FileStream(object):
 
     def WriteUTF16(self, u16):
         return self.Write(u16.encode('U16')[2:])
+
+def MemoryStream(endian = FileStream.LITTLE_ENDIAN, **kwargs):
+    return FileStream(b'', endian = endian, **kwargs)
