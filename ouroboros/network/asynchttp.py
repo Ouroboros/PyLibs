@@ -1,6 +1,7 @@
 from ..common import *
 from ..otypes import *
 import aiohttp
+import aiohttp.web_exceptions
 import asyncio
 import http.cookies
 import urllib
@@ -294,6 +295,9 @@ class AsyncHttp(object):
     def SetHeaders(self, headers):
         self.headers = headers
 
+    def AddHeaders(self, headers):
+        self.headers.update(headers)
+
     def SetCookies(self, cookies):
         if not cookies:
             self.connector.cookies.clear()
@@ -314,6 +318,27 @@ class AsyncHttp(object):
         self.connector = self.TCPConnector
         self.SetCookies(self.ProxyConnector.cookies)
 
+    async def get(self, url, **kwargs):
+        return await self.request('get', url, **kwargs)
+
+    async def post(self, url, **kwargs):
+        allow_redirects = kwargs.setdefault('allow_redirects', False)
+
+        while True:
+            resp = await self.request('post', url, **kwargs)
+            if resp.status in [
+                    aiohttp.web_exceptions.HTTPFound.status_code,
+                    aiohttp.web_exceptions.HTTPMovedPermanently.status_code,
+                    aiohttp.web_exceptions.HTTPSeeOther.status_code,
+                    aiohttp.web_exceptions.HTTPTemporaryRedirect.status_code,
+                ]:
+                url = resp.response.headers.get(aiohttp.hdrs.LOCATION)
+                continue
+
+            break
+
+        return resp
+
     async def request(self, method, url, **kwargs):
         params = {}
 
@@ -326,14 +351,9 @@ class AsyncHttp(object):
         kwargs['connector'] = self.connector
         kwargs['request_class'] = _ClientRequest.factory(**params)
 
-        if 'headers' not in kwargs:
-            kwargs['headers'] = self.headers
-        else:
-            hdr = self.headers.copy()
-            for k, v in kwargs['headers'].items():
-                hdr[k] = v
-
-            kwargs['headers'] = hdr
+        hdr = kwargs.get('headers', {})
+        hdr.update(self.headers)
+        kwargs['headers'] = hdr
 
         try:
             response = await asyncio.wait_for(aiohttp.request(method, url, **kwargs), self.timeout)
