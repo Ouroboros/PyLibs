@@ -9,65 +9,9 @@ import urllib
 def canonicalHeaderKey(key):
     return '-'.join([s[0].upper() + s[1:].lower() for s in key.split('-')])
 
-class Request(aiohttp.Request):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.headers = _CaseInsensitiveDict()
-
-    def _add_default_headers(self):
-        aiohttp.HttpMessage._add_default_headers(self)
-        self.headers[canonicalHeaderKey(aiohttp.hdrs.CONNECTION)] = self.headers.pop(aiohttp.hdrs.CONNECTION)
-
-    def add_header(self, name, value):
-        """Analyze headers. Calculate content length,
-        removes hop headers, etc."""
-        assert not self.headers_sent, 'headers have been sent already'
-        assert isinstance(name, str), 'Header name should be a string, got {!r}'.format(name)
-        assert set(name).issubset(aiohttp.protocol.ASCIISET), 'Header name should contain ASCII chars, got {!r}'.format(name)
-        assert isinstance(value, str), 'Header {!r} should have string value, got {!r}'.format(name, value)
-
-        name = canonicalHeaderKey(name.strip())
-        value = value.strip()
-
-        name_upper = name.upper()
-
-        if name_upper == 'CONTENT-LENGTH':
-            self.length = int(value)
-
-        if name_upper == 'CONNECTION':
-            val = value.lower()
-            # handle websocket
-            if 'upgrade' in val:
-                self.upgrade = True
-            # connection keep-alive
-            elif 'close' in val:
-                self.keepalive = False
-            elif 'keep-alive' in val and self.version >= aiohttp.protocol.HttpVersion11:
-                self.keepalive = True
-
-        elif name_upper == 'UPGRADE':
-            if 'websocket' in value.lower():
-                self.websocket = True
-                self.headers[name] = value
-
-        elif name_upper == 'TRANSFER-ENCODING' and not self.chunked:
-            self.chunked = value.lower().strip() == 'chunked'
-
-        elif name_upper not in self.HOP_HEADERS:
-            if name_upper == 'USER-AGENT':
-                self._has_user_agent = True
-
-            # ignore hop-by-hop headers
-            self.headers.add(name, value)
-
-aiohttp.Request = Request
-
 class _CaseInsensitiveDict(CaseInsensitiveDict):
     def add(self, key, value):
         self[key] = value
-
-    # def items(self, **kwargs):
-    #     return super().items()
 
 class _ClientRequest(aiohttp.client.ClientRequest):
     def __init__(self, *args, noQuotoPath = False, **kwargs):
@@ -128,117 +72,6 @@ class _ClientRequest(aiohttp.client.ClientRequest):
 
         self.headers['Cookie'] = c.output(header='', sep=';', attrs = {}).strip()
 
-    def update_headers2(self, headers):
-        """Update request headers."""
-        self.headers = _CaseInsensitiveDict()
-
-        if headers:
-            if isinstance(headers, dict):
-                headers = headers.items()
-            elif isinstance(headers, aiohttp.MultiDict):
-                headers = headers.items()
-
-            for key, value in headers:
-                self.headers[key] = value
-
-        # DEFAULT_HEADERS = {
-        #     'Accept': '*/*',
-        #     'Accept-Encoding': 'gzip, deflate',
-        # }
-
-        # for hdr, val in DEFAULT_HEADERS.items():
-        #     if hdr not in self.headers:
-        #         self.headers[hdr] = val
-
-        # add host
-        if 'HOST' not in self.headers:
-            self.headers['Host'] = self.netloc
-
-class ProxyConnector(aiohttp.connector.ProxyConnector):
-    def setProxy(self, host, port, login = None, password = None, encoding = 'latin1'):
-        self._proxy = 'http://%s:%d' % (host, port)
-        if login is not None and password is not None:
-            self._proxy_auth = aiohttp.helpers.BasicAuth(login, password, encoding)
-
-    async def _create_connection(self, req, **kwargs):
-        import aiohttp.hdrs as hdrs
-
-        proxy_req = _ClientRequest.factory()(
-                        hdrs.METH_GET,
-                        self._proxy,
-                        headers = {hdrs.HOST: req.host},
-                        auth    = self._proxy_auth,
-                        loop    = self._loop
-                    )
-
-        try:
-            transport, proto = await super()._create_connection(proxy_req)
-        except OSError as exc:
-            raise aiohttp.ProxyConnectionError(*exc.args) from exc
-
-        if not req.ssl:
-            req.path = '{scheme}://{host}{path}'.format(
-                            scheme = req.scheme,
-                            host   = req.netloc,
-                            path   = req.path
-                        )
-
-        if hdrs.AUTHORIZATION in proxy_req.headers:
-            auth = proxy_req.headers[hdrs.AUTHORIZATION]
-            del proxy_req.headers[hdrs.AUTHORIZATION]
-            req.headers[hdrs.PROXY_AUTHORIZATION] = auth
-            proxy_req.headers[hdrs.PROXY_AUTHORIZATION] = auth
-
-        if req.ssl:
-            # For HTTPS requests over HTTP proxy
-            # we must notify proxy to tunnel connection
-            # so we send CONNECT command:
-            #   CONNECT www.python.org:443 HTTP/1.1
-            #   Host: www.python.org
-            #
-            # next we must do TLS handshake and so on
-            # to do this we must wrap raw socket into secure one
-            # asyncio handles this perfectly
-            proxy_req.method = hdrs.METH_CONNECT
-            proxy_req.path = '{}:{}'.format(req.host, req.port)
-            key = (req.host, req.port, req.ssl)
-            conn = aiohttp.connector.Connection(
-                        self,
-                        key,
-                        proxy_req,
-                        transport,
-                        proto,
-                        self._loop
-                    )
-
-            self._acquired[key].add(conn._transport)
-            proxy_resp = proxy_req.send(conn.writer, conn.reader)
-            try:
-                resp = await proxy_resp.start(conn, True)
-            except:
-                proxy_resp.close()
-                conn.close()
-                raise
-            else:
-                conn.detach()
-                if resp.status != 200:
-                    raise aiohttp.HttpProxyError(code=resp.status, message=resp.reason)
-                rawsock = transport.get_extra_info('socket', default=None)
-                if rawsock is None:
-                    raise RuntimeError("Transport does not expose socket instance")
-
-                transport.pause_reading()
-                transport, proto = await self._loop.create_connection(
-                                        self._factory,
-                                        ssl             = True,
-                                        sock            = rawsock,
-                                        server_hostname = req.host,
-                                        **kwargs
-                                    )
-
-        return transport, proto
-
-
 class AsyncHttp(object):
     class Response(object):
         def __init__(self, response, content):
@@ -270,27 +103,27 @@ class AsyncHttp(object):
 
     def __init__(self, *, loop = None, timeout = 30, cookie_class = http.cookies.BaseCookie):
         self.loop = loop or asyncio.get_event_loop()
-        self.TCPConnector = aiohttp.connector.TCPConnector(verify_ssl = False, share_cookies = True, loop = self.loop)
-        self.ProxyConnector = ProxyConnector('http://localhost:80', verify_ssl = False, share_cookies = True, loop = self.loop)
-
-        self.TCPConnector.cookies = cookie_class()
-        self.ProxyConnector.cookies = cookie_class()
 
         self.headers = {}
         self.timeout = timeout
+        self.cookie_jar = aiohttp.CookieJar(loop = self.loop)
+        self.proxy = None
+        self.proxyAuth = None
 
-        self.connector = self.TCPConnector
+        self.session = aiohttp.ClientSession(
+                            loop = self.loop,
+                            cookie_jar = self.cookie_jar,
+                        )
 
     def __del__(self):
         self.close()
 
     def close(self):
-        self.TCPConnector.close()
-        self.ProxyConnector.close()
+        return self.session.close()
 
     @property
     def cookies(self):
-        return self.connector.cookies
+        return self.cookie_jar
 
     def SetHeaders(self, headers):
         self.headers = headers
@@ -300,23 +133,21 @@ class AsyncHttp(object):
 
     def SetCookies(self, cookies):
         if not cookies:
-            self.connector.cookies.clear()
+            self.cookie_jar.clear()
         else:
-            self.connector.update_cookies(cookies)
+            self.cookie_jar.update_cookies(cookies)
 
     def SetProxy(self, host, port, login = None, password = None, encoding = 'latin1'):
-        if self.connector is not self.ProxyConnector:
-            self.connector = self.ProxyConnector
-            self.SetCookies(self.TCPConnector.cookies)
+        self.proxy = 'http://%s:%s' % (host, port)
 
-        self.ProxyConnector.setProxy(host, port, login, password, encoding)
+        if login:
+            self.proxyAuth = aiohttp.BasicAuth(login, password, encoding)
+        else:
+            self.proxyAuth = None
 
     def ClearProxy(self):
-        if self.connector is not self.ProxyConnector:
-            return
-
-        self.connector = self.TCPConnector
-        self.SetCookies(self.ProxyConnector.cookies)
+        self.proxy = None
+        self.proxyAuth = None
 
     async def get(self, url, **kwargs):
         return await self.request('get', url, **kwargs)
@@ -348,15 +179,20 @@ class AsyncHttp(object):
             except KeyError:
                 pass
 
-        kwargs['connector'] = self.connector
-        kwargs['request_class'] = _ClientRequest.factory(**params)
+        # kwargs['request_class'] = _ClientRequest.factory(**params)
 
         hdr = kwargs.get('headers', {})
         hdr.update(self.headers)
         kwargs['headers'] = hdr
 
+        if self.proxy:
+            kwargs['proxy'] = self.proxy
+
+        if self.proxyAuth:
+            kwargs['proxy_auth'] = self.proxyAuth
+
         try:
-            response = await asyncio.wait_for(aiohttp.request(method, url, **kwargs), self.timeout)
+            response = await asyncio.wait_for(self.session.request(method, url, **kwargs), self.timeout)
             content = await asyncio.wait_for(response.read(), self.timeout)
         except asyncio.TimeoutError:
             raise asyncio.TimeoutError('%s %s timeout: %s' % (method, url, self.timeout))
