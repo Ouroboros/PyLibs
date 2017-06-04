@@ -101,7 +101,7 @@ class AsyncHttp(object):
         def decode(self, encoding = None, **kwargs):
             return self.content.decode(encoding or self.response._get_encoding(), **kwargs)
 
-    def __init__(self, *, loop = None, timeout = 30, cookie_class = http.cookies.BaseCookie):
+    def __init__(self, *, loop = None, timeout = 30, cookie_class = http.cookies.BaseCookie, verify_ssl = True):
         self.loop = loop or asyncio.get_event_loop()
 
         self.headers = {}
@@ -111,8 +111,9 @@ class AsyncHttp(object):
         self.proxyAuth = None
 
         self.session = aiohttp.ClientSession(
-                            loop = self.loop,
-                            cookie_jar = self.cookie_jar,
+                            loop        = self.loop,
+                            cookie_jar  = self.cookie_jar,
+                            connector   = aiohttp.TCPConnector(loop = self.loop, verify_ssl = verify_ssl),
                         )
 
     def __del__(self):
