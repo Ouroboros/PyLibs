@@ -142,10 +142,12 @@ class FileStream(object):
     def Open(self, file, mode = 'rb'):
         if isinstance(file, (bytes, bytearray)):
             return self.OpenMemory(file)
+
         elif isinstance(file, type(self)):
             self._stream = file
             self.MemoryFile = file.MemoryFile
             return self
+
         else:
             return self.OpenFile(file, mode)
 
