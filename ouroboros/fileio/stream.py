@@ -1,5 +1,6 @@
 from ..common import *
 from ..otypes.wintypes import *
+from .. import encoding
 import io
 
 _DEFAULT_ENDIAN = '<'
@@ -109,6 +110,7 @@ class FileStream(object):
         self._stream = None
         self._endian = endian
         self._encoding = ANSI_CODE_PAGE
+        self._ptrsize = 0
 
         if file is not None:
             self.Open(file, mode)
@@ -138,6 +140,14 @@ class FileStream(object):
     @Encoding.setter
     def Encoding(self, value):
         self._encoding = value
+
+    @property
+    def PointerSize(self):
+        return self._ptrsize
+
+    @PointerSize.setter
+    def PointerSize(self, size):
+        self._ptrsize = size
 
     def Open(self, file, mode = 'rb'):
         if isinstance(file, (bytes, bytearray)):
@@ -206,7 +216,8 @@ class FileStream(object):
             return b''
 
         with FileStreamPositionHolder(self):
-            self.Position = offset
+            self.Position += offset
+
             if size == 1:
                 b = self.ReadByte()
             elif size == 2:
@@ -373,6 +384,15 @@ class FileStream(object):
     def ReadULong64(self):
         return _ReadULong64(self._stream, self._endian)
 
+    def ReadPointer(self):
+        if self.PointerSize == 4:
+            return self.ReadULong()
+
+        elif self.PointerSize == 8:
+            return self.ReadULong64()
+
+        raise Exception('incoorect pointer size %d' % self.PointerSize)
+
     def ReadFloat(self):
         return _ReadFloat(self._stream, self._endian)
 
@@ -384,6 +404,11 @@ class FileStream(object):
 
     def ReadUTF16(self):
         return _ReadWString(self._stream)
+
+    def ReadVarint(self):
+        val, size = encoding.decodeVarint(self)
+        self.Position += size
+        return val
 
     def WriteBoolean(self, *values):
         return sum([self.WriteByte(bool(b)) for b in values])

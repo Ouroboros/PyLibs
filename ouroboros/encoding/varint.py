@@ -1,5 +1,5 @@
 def encodeVarint(value):
-    varint = b''
+    varint = bytearray()
 
     bits = value & 0x7f
     value >>= 7
@@ -11,7 +11,7 @@ def encodeVarint(value):
 
     varint += int.to_bytes(bits, 1, 'little')
 
-    return varint
+    return bytes(varint)
 
 def decodeVarint(buffer, mask = (1 << 64) - 1):
     pos    = 0
