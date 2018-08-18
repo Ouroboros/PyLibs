@@ -297,7 +297,7 @@ class FileStream(object):
 
     @Position.setter
     def Position(self, offset):
-        if offset == self.END_OF_FILE:
+        if offset is self.END_OF_FILE:
             self.Seek(0, io.SEEK_END)
             return
 
