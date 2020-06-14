@@ -106,10 +106,10 @@ class FileStream(object):
 
     END_OF_FILE = None
 
-    def __init__(self, file = None, mode = 'rb', *, endian = LITTLE_ENDIAN):
+    def __init__(self, file = None, mode = 'rb', *, endian = LITTLE_ENDIAN, encoding = ANSI_CODE_PAGE):
         self._stream = None
         self._endian = endian
-        self._encoding = ANSI_CODE_PAGE
+        self._encoding = encoding
         self._ptrsize = 0
 
         if file is not None:
