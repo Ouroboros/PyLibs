@@ -34,22 +34,14 @@ def clear():
         os.system('clear')
 
 if isinstance(sys.stdout, io.TextIOWrapper):
-    class _flushstdout(type(sys.stdout)):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
+    def _flushstdout():
+        _write = sys.stdout.write
 
-            self.stdout = args[0]
+        def _flush_write(*args, **kwargs):
+            _write(*args, **kwargs)
+            sys.stdout.flush()
 
-            for attr in dir(self.stdout):
-                try:
-                    setattr(self, attr, getattr(self.stdout, attr))
-                except:
-                    pass
+        sys.stdout.write = _flush_write
 
-            self.write = self._flush_write
-
-        def _flush_write(self, *args):
-            self.stdout.write(*args)
-            self.stdout.flush()
-
-    sys.stdout = _flushstdout(sys.stdout)
+    _flushstdout()
+    del _flushstdout
