@@ -36,24 +36,24 @@ def _ReadDouble(fs, endian = _DEFAULT_ENDIAN):
     return struct.unpack(endian + 'd', fs.read(8))[0]
 
 def _ReadAString(fs, cp = ANSI_CODE_PAGE):
-    string = b''
+    s = bytearray()
     while True:
         buf = fs.read(1)
         if buf == b'' or buf == b'\x00':
             break
 
-        string += buf
+        s.extend(buf)
 
-    return string.decode(cp, errors='ignore')
+    return s.decode(cp, errors='ignore')
 
 def _ReadWString(fs):
-    string = b''
+    s = bytearray()
     while True:
         buf = fs.read(2)
         if buf == b'' or buf == b'\x00\x00':
             break
 
-        string += buf
+        s.extend(buf)
 
     return string.decode('U16')
 
@@ -107,6 +107,12 @@ class FileStream(object):
     END_OF_FILE = None
 
     def __init__(self, file = None, mode = 'rb', *, endian = LITTLE_ENDIAN, encoding = ANSI_CODE_PAGE):
+        if endian == 'little':
+            endian = self.LITTLE_ENDIAN
+
+        elif endian == 'big':
+            endian = self.BIG_ENDIAN
+
         self._stream = None
         self._endian = endian
         self._encoding = encoding
@@ -307,6 +313,10 @@ class FileStream(object):
         #    print('seek %s' % offset)
         self.Seek(offset, io.SEEK_SET)
 
+    @property
+    def PositionSaver(self):
+        return FileStreamPositionHolder(self)
+
     def Truncate(self, size):
         return self._stream.truncate(size)
 
@@ -353,6 +363,12 @@ class FileStream(object):
 
     def IsEndOfFile(self):
         return self.Position >= self.Length
+
+    def AlignTo(self, align, *, pad = b'\x00'):
+        pos = self.Position
+        padding = align - pos % align
+        if padding != align:
+            self.Write(pad * padding)
 
     def ReadBoolean(self):
         return bool(self.ReadUChar())

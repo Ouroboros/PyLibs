@@ -39,7 +39,7 @@ def getLogger(name, *, logPath = None):
         t = datetime.datetime.now()
         return os.path.join(path, '[%s][%s][%04d-%02d-%02d %02d.%02d.%02d][%d][%d].txt' % (os.path.basename(sys.argv[0]).rsplit('.', maxsplit = 1)[0], self.name, t.year, t.month, t.day, t.hour, t.minute, t.second, os.getpid(), threading.currentThread().ident))
 
-    def findCaller(self, stack_info = False):
+    def findCaller(self, stack_info = False, stacklevel = 1):
         """
         Find the stack frame of the caller so that we can note the source
         file name, line number and function name.
@@ -49,6 +49,12 @@ def getLogger(name, *, logPath = None):
         #IronPython isn't run with -X:Frames.
         if f is not None:
             f = f.f_back
+        orig_f = f
+        while f and stacklevel > 1:
+            f = f.f_back
+            stacklevel -= 1
+        if not f:
+            f = orig_f
         rv = "(unknown file)", 0, "(unknown function)", None
         while hasattr(f, "f_code"):
             co = f.f_code
