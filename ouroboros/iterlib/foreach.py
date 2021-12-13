@@ -11,7 +11,7 @@ def forEachFile(callback, pathlist, filter = '*.*'):
 
     return list(map(callback, files))
 
-def forEachFileMP(callback, pathlist, filter = '*.*'):
+def forEachFileMP(callback, pathlist, filter = '*.*', *, subdir = True):
     import multiprocessing
     from multiprocessing.pool import Pool
 
@@ -20,7 +20,7 @@ def forEachFileMP(callback, pathlist, filter = '*.*'):
 
     files = []
     for p in pathlist:
-        files.extend(getDirectoryFiles(p, filter)) if os.path.isdir(p) else files.append(p)
+        files.extend(getDirectoryFiles(p, filter, subdir = subdir)) if os.path.isdir(p) else files.append(p)
 
     with Pool(multiprocessing.cpu_count()) as p:
         return p.map(callback, files)
