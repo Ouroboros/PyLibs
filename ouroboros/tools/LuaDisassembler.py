@@ -8,7 +8,7 @@ class LuaString:
             self.String = fs
             return
 
-        length = fs.ulong()
+        length = fs.ReadULong()
         self.String = '' if length == 0 else fs.read(length)[:-1].decode('UTF8')
 
     def __str__(self):
@@ -26,14 +26,14 @@ class LuaHeader:
         if fs is None: return
 
         self.Signature              = fs.read(4)
-        self.Version                = fs.byte()
-        self.Official               = fs.byte()
-        self.Endianness             = fs.byte()
-        self.SizeOfInt              = fs.byte()
-        self.SizeOfPtr              = fs.byte()
-        self.SizeOfInstruction      = fs.byte()
-        self.SizeOfDouble           = fs.byte()
-        self.IsDoubleIntegral       = fs.byte()
+        self.Version                = fs.ReadByte()
+        self.Official               = fs.ReadByte()
+        self.Endianness             = fs.ReadByte()
+        self.SizeOfInt              = fs.ReadByte()
+        self.SizeOfPtr              = fs.ReadByte()
+        self.SizeOfInstruction      = fs.ReadByte()
+        self.SizeOfDouble           = fs.ReadByte()
+        self.IsDoubleIntegral       = fs.ReadByte()
 
     def ToBinary(self):
         return self.Signature + struct.pack('<' + 'B' * 8, self.Version, self.Official, self.Endianness, self.SizeOfInt, self.SizeOfPtr, self.SizeOfInstruction, self.SizeOfDouble, self.IsDoubleIntegral)
@@ -63,7 +63,7 @@ class LuaInstruction:
         if type(fs) == int:
             self.Value = fs
         else:
-            self.Value = fs.ulong()
+            self.Value = fs.ReadULong()
 
     def __str__(self):
         return 'LuaInstruction(0x%08X)' % self.Value
@@ -72,7 +72,7 @@ class LuaCode:
     def __init__(self, fs = None):
         if fs is None: return
 
-        number = fs.ulong()
+        number = fs.ReadULong()
         self.Instruction = []
         for i in range(number):
             self.Instruction.append(LuaInstruction(fs))
@@ -93,7 +93,7 @@ def ReadLuaNil(fs):
     return b''
 
 def ReadLuaBoolean(fs):
-    return bool(fs.byte())
+    return bool(fs.ReadByte())
 
 def ReadLuaNumber(fs):
     return fs.double()
@@ -144,9 +144,9 @@ class LuaConstants:
 
         if fs is None: return
 
-        number = fs.ulong()
+        number = fs.ReadULong()
         for i in range(number):
-            type = fs.byte()
+            type = fs.ReadByte()
             self.Value.append(ReadLuaType[type](fs))
 
     def ToBinary(self):
@@ -168,8 +168,8 @@ class LuaLocalVariable:
             self.StartPC = StartPC
             self.EndPC = EndPC
         else:
-            self.StartPC    = fs.ulong()
-            self.EndPC      = fs.ulong()
+            self.StartPC    = fs.ReadULong()
+            self.EndPC      = fs.ReadULong()
 
     def ToBinary(self):
         return self.VarName.ToBinary() + struct.pack('<II', self.StartPC, self.EndPC)
@@ -186,15 +186,15 @@ class LuaDebug:
         self.LocalVariable  = []
         self.UpValues       = []
 
-        n = fs.ulong()
+        n = fs.ReadULong()
         for i in range(n):
-            self.LineInfo.append(fs.ulong())
+            self.LineInfo.append(fs.ReadULong())
 
-        n = fs.ulong()
+        n = fs.ReadULong()
         for i in range(n):
             self.LocalVariable.append(LuaLocalVariable(fs))
 
-        n = fs.ulong()
+        n = fs.ReadULong()
         for i in range(n):
             self.UpValues.append(LuaString(fs))
 
@@ -227,16 +227,16 @@ class LuaFunction_51:
         self.Name = 'Func_%X' % fs.tell()
 
         self.Source             = LuaString(fs)
-        self.LineDefined        = fs.ulong()
-        self.LastLineDefined    = fs.ulong()
-        self.NumberOfUpvalues   = fs.byte()
-        self.NumberOfParam      = fs.byte()
-        self.IsVararg           = fs.byte()
-        self.MaxStackSize       = fs.byte()
+        self.LineDefined        = fs.ReadULong()
+        self.LastLineDefined    = fs.ReadULong()
+        self.NumberOfUpvalues   = fs.ReadByte()
+        self.NumberOfParam      = fs.ReadByte()
+        self.IsVararg           = fs.ReadByte()
+        self.MaxStackSize       = fs.ReadByte()
         self.Code               = LuaCode(fs)
         self.Constants          = LuaConstants(fs)
 
-        NumberOfFunction = fs.ulong()
+        NumberOfFunction = fs.ReadULong()
 
         for i in range(NumberOfFunction):
             self.Functions.append(LuaFunction_51(fs))
@@ -332,7 +332,7 @@ class LuaDisassembler:
         raise Exception('not implemented')
 
     def open(self, file):
-        fs = BytesStream().open(file)
+        fs = fileio.FileStream().Open(file, 'rb')
 
         self.FileName = os.path.basename(file)
 
@@ -347,7 +347,7 @@ class LuaDisassembler:
         return self
 
     def CompileTo(self, file):
-        fs = BytesStream().open(file, 'wb')
+        fs = open(file, 'wb')
 
         fs.write(self.Header.ToBinary())
         fs.write(self.Function.ToBinary())
@@ -391,4 +391,5 @@ def main(file):
     lua = LuaDisassembler().open(file).save(file + '.py')
 
 if __name__ == '__main__':
-    TryForEachFile(sys.argv[1:], main) #, 'menu-main-init.lb'
+    for arg in sys.argv[1:]:
+        Try(main, arg) #, 'menu-main-init.lb'

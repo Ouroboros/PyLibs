@@ -1,6 +1,6 @@
 import os, glob, fnmatch
 
-def getDirectoryFiles(path, filter = '*.*', *, subdir = True):
+def getDirectoryFiles(path, filter = '*.*', *, subdir = True) -> list[str]:
     # allfiles = []
     if filter == '*.*':
         filter = '*'
